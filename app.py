@@ -9,6 +9,7 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from flask import Flask, render_template, request, jsonify
+from utils import clean_text
 
 # ---------------------------------------------------------------------------
 # IMPORTANT: clean_text must be defined BEFORE loading the model so that
@@ -21,19 +22,19 @@ _stop_words = set(stopwords.words('english'))
 _stemmer = PorterStemmer()
 
 
-def clean_text(text):
-    """Mirror of the preprocessing function used during model training."""
-    # Lowercase
-    text = text.lower()
-    # Remove punctuation & numbers
-    text = re.sub(r'[^a-z\s]', '', text)
-    # Tokenise, remove stopwords, apply stemming
-    words = [
-        _stemmer.stem(word)
-        for word in text.split()
-        if word not in _stop_words
-    ]
-    return " ".join(words)
+# def clean_text(text):
+#     """Mirror of the preprocessing function used during model training."""
+#     # Lowercase
+#     text = text.lower()
+#     # Remove punctuation & numbers
+#     text = re.sub(r'[^a-z\s]', '', text)
+#     # Tokenise, remove stopwords, apply stemming
+#     words = [
+#         _stemmer.stem(word)
+#         for word in text.split()
+#         if word not in _stop_words
+#     ]
+#     return " ".join(words)
 
 
 # ---------------------------------------------------------------------------
