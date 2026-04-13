@@ -2,7 +2,7 @@ import os
 import re
 import math
 import random
-import pickle
+import joblib
 
 import pandas as pd
 import nltk
@@ -43,8 +43,7 @@ def clean_text(text):
 _MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model.pkl')
 
 try:
-    with open(_MODEL_PATH, 'rb') as _f:
-        model = pickle.load(_f)
+    model = joblib.load(_MODEL_PATH)
 except FileNotFoundError:
     raise RuntimeError(
         "model.pkl not found. Please run all cells in model_training.ipynb "
