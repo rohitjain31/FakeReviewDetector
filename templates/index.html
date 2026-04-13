@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fake Review Detector</title>
+
+  <!-- Bootstrap 5 -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <!-- Bootstrap Icons -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    rel="stylesheet"
+  />
+
+  <style>
+    :root {
+      --brand: #4f46e5;
+      --brand-dark: #3730a3;
+    }
+
+    body {
+      background: linear-gradient(135deg, #e0e7ff 0%, #f0fdf4 100%);
+      min-height: 100vh;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+
+    /* ── Hero banner ── */
+    .hero {
+      background: linear-gradient(135deg, var(--brand) 0%, #7c3aed 100%);
+      color: #fff;
+      padding: 2.5rem 1rem;
+      text-align: center;
+      border-radius: 0 0 2rem 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 24px rgba(79, 70, 229, 0.25);
+    }
+    .hero h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; }
+    .hero p  { opacity: .85; font-size: 1.05rem; margin-bottom: 0; }
+
+    /* ── Card ── */
+    .main-card {
+      border: none;
+      border-radius: 1.25rem;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, .10);
+    }
+    .card-header-custom {
+      background: linear-gradient(90deg, var(--brand) 0%, #7c3aed 100%);
+      color: #fff;
+      border-radius: 1.25rem 1.25rem 0 0 !important;
+      padding: 1rem 1.5rem;
+    }
+
+    /* ── Rating slider ── */
+    .rating-badge {
+      min-width: 2.4rem;
+      text-align: center;
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+    #ratingSlider { accent-color: var(--brand); }
+    .stars { color: #f59e0b; letter-spacing: 2px; }
+
+    /* ── Result card ── */
+    #resultCard { display: none; }
+    .result-icon { font-size: 2.8rem; }
+    .confidence-bar .progress-bar { transition: width .6s ease; }
+
+    /* ── Buttons ── */
+    .btn-predict  { background: var(--brand); border-color: var(--brand); }
+    .btn-predict:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
+    .btn-generate { border-color: var(--brand); color: var(--brand); }
+    .btn-generate:hover { background: var(--brand); color: #fff; }
+
+    textarea:focus, select:focus, input[type=range]:focus {
+      outline: 2px solid var(--brand);
+      outline-offset: 2px;
+    }
+
+    /* Spinner overlay for generate button */
+    #genSpinner { display: none; }
+
+    /* ── Locked fields ── */
+    .field-locked textarea,
+    .field-locked .form-range {
+      pointer-events: none;
+      opacity: .45;
+    }
+    .field-locked textarea { background: #f1f5f9; }
+    .unlock-hint {
+      font-size: .8rem;
+      color: #6366f1;
+      display: none;
+    }
+    .field-locked .unlock-hint { display: block; }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── Hero ── -->
+  <div class="hero">
+    <h1><i class="bi bi-shield-exclamation me-2"></i>Fake Review Detector</h1>
+    <p>AI-powered detection of computer-generated (CG) vs. genuine (OR) product reviews</p>
+  </div>
+
+  <div class="container" style="max-width: 760px;">
+
+    <!-- ── Main form card ── -->
+    <div class="card main-card mb-4">
+      <div class="card-header card-header-custom">
+        <h5 class="mb-0"><i class="bi bi-search me-2"></i>Analyse a Review</h5>
+      </div>
+      <div class="card-body p-4">
+
+        <!-- Step 1 — Category (always enabled) -->
+        <div class="mb-3">
+          <label for="categorySelect" class="form-label fw-semibold">
+            <i class="bi bi-tag me-1"></i>Step 1 — Product Category
+            <span class="text-danger">*</span>
+          </label>
+          <select id="categorySelect" class="form-select">
+            <option value="" disabled selected>— Select category to begin —</option>
+            {% for cat in categories %}
+            <option value="{{ cat }}">{{ cat | replace('_', ' ') }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Step 2 — Review textarea (locked until category chosen) -->
+        <div id="reviewSection" class="mb-3 field-locked">
+          <label for="reviewText" class="form-label fw-semibold">
+            <i class="bi bi-chat-left-text me-1"></i>Step 2 — Review Text
+            <span class="text-danger">*</span>
+          </label>
+          <textarea
+            id="reviewText"
+            class="form-control"
+            rows="5"
+            maxlength="5000"
+            placeholder="Paste or type the review here…"
+            disabled
+          ></textarea>
+          <div class="d-flex justify-content-between mt-1">
+            <span class="unlock-hint"><i class="bi bi-lock me-1"></i>Select a category first</span>
+            <small class="text-muted"><span id="charCount">0</span> / 5000</small>
+          </div>
+        </div>
+
+        <!-- Step 3 — Rating slider (locked until category chosen) -->
+        <div id="ratingSection" class="mb-4 field-locked">
+          <label class="form-label fw-semibold">
+            <i class="bi bi-star-half me-1"></i>Step 3 — Rating
+            <span class="text-danger">*</span>
+          </label>
+          <div class="d-flex align-items-center gap-3">
+            <input
+              type="range"
+              id="ratingSlider"
+              class="form-range flex-grow-1"
+              min="1" max="5" step="1" value="3"
+              disabled
+            />
+            <span id="ratingBadge" class="badge bg-primary rating-badge fs-6">3</span>
+          </div>
+          <div id="starDisplay" class="stars mt-1 text-center">★★★☆☆</div>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="d-flex flex-wrap gap-2">
+          <button
+            id="predictBtn"
+            type="button"
+            class="btn btn-predict btn-primary flex-grow-1"
+            disabled
+          >
+            <i class="bi bi-cpu me-2"></i>Predict
+          </button>
+
+          <button
+            id="generateBtn"
+            type="button"
+            class="btn btn-generate btn-outline-primary"
+            disabled
+          >
+            <span id="genSpinner" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            <i id="genIcon" class="bi bi-magic me-1"></i>
+            Generate Fake Review
+          </button>
+
+          <button
+            id="resetBtn"
+            type="button"
+            class="btn btn-outline-secondary"
+          >
+            <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+          </button>
+        </div>
+
+      </div><!-- /card-body -->
+    </div><!-- /main card -->
+
+    <!-- ── Result card ── -->
+    <div id="resultCard" class="card main-card mb-5">
+      <div class="card-header card-header-custom">
+        <h5 class="mb-0"><i class="bi bi-bar-chart-steps me-2"></i>Prediction Result</h5>
+      </div>
+      <div class="card-body p-4 text-center">
+
+        <!-- Icon + label -->
+        <div class="result-icon mb-2" id="resultIcon"></div>
+        <h3 id="resultLabel" class="fw-bold mb-1"></h3>
+        <p id="resultSubtext" class="text-muted mb-3"></p>
+
+        <!-- Confidence bar -->
+        <div id="confidenceSection" style="display:none;">
+          <div class="d-flex justify-content-between mb-1">
+            <small class="text-muted fw-semibold">Confidence</small>
+            <small id="confidenceText" class="fw-bold"></small>
+          </div>
+          <div class="progress confidence-bar" style="height: 12px; border-radius: 6px;">
+            <div
+              id="confidenceBar"
+              class="progress-bar"
+              role="progressbar"
+              style="width: 0%"
+            ></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="text-center text-muted small mb-4">
+      Bits Pilani Capstone · Fake Review Detection · LinearSVC + TF-IDF Bigrams
+    </footer>
+
+  </div><!-- /container -->
+
+  <!-- Bootstrap 5 JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    const STAR_MAP = { 1: '★☆☆☆☆', 2: '★★☆☆☆', 3: '★★★☆☆', 4: '★★★★☆', 5: '★★★★★' };
+
+    // ── Element refs ────────────────────────────────────────────────────────
+    const textarea       = document.getElementById('reviewText');
+    const charCount      = document.getElementById('charCount');
+    const slider         = document.getElementById('ratingSlider');
+    const ratingBadge    = document.getElementById('ratingBadge');
+    const starDisplay    = document.getElementById('starDisplay');
+    const categorySelect = document.getElementById('categorySelect');
+    const reviewSection  = document.getElementById('reviewSection');
+    const ratingSection  = document.getElementById('ratingSection');
+    const predictBtn     = document.getElementById('predictBtn');
+    const generateBtn    = document.getElementById('generateBtn');
+    const resetBtn       = document.getElementById('resetBtn');
+
+    // ── Unlock fields once category is selected ──────────────────────────────
+    function unlockFields() {
+      const hasCategory = categorySelect.value !== '';
+
+      // textarea
+      textarea.disabled = !hasCategory;
+      reviewSection.classList.toggle('field-locked', !hasCategory);
+
+      // rating slider
+      slider.disabled = !hasCategory;
+      ratingSection.classList.toggle('field-locked', !hasCategory);
+
+      // buttons
+      predictBtn.disabled  = !hasCategory;
+      generateBtn.disabled = !hasCategory;
+    }
+
+    categorySelect.addEventListener('change', unlockFields);
+
+    // ── Character counter ───────────────────────────────────────────────────
+    textarea.addEventListener('input', () => {
+      charCount.textContent = textarea.value.length;
+    });
+
+    // ── Rating slider ↔ badge + stars ───────────────────────────────────────
+    slider.addEventListener('input', () => {
+      const v = slider.value;
+      ratingBadge.textContent = v;
+      starDisplay.textContent = STAR_MAP[v];
+    });
+
+    // ── Reset ────────────────────────────────────────────────────────────────
+    function resetUI() {
+      // Form fields
+      categorySelect.value  = '';
+      textarea.value        = '';
+      charCount.textContent = '0';
+      slider.value          = '3';
+      ratingBadge.textContent = '3';
+      starDisplay.textContent = STAR_MAP[3];
+
+      // Re-lock fields
+      unlockFields();
+
+      // Hide result card
+      document.getElementById('resultCard').style.display = 'none';
+
+      // Remove any alert
+      const existing = document.getElementById('liveAlert');
+      if (existing) existing.remove();
+    }
+
+    resetBtn.addEventListener('click', resetUI);
+
+    // ── Generate fake review ────────────────────────────────────────────────
+
+    const genSpinner  = document.getElementById('genSpinner');
+    const genIcon     = document.getElementById('genIcon');
+
+    generateBtn.addEventListener('click', async () => {
+      // Show loading state
+      generateBtn.disabled = true;
+      genSpinner.style.display = 'inline-block';
+      genIcon.style.display    = 'none';
+
+      try {
+        const resp = await fetch('/generate');
+        if (!resp.ok) throw new Error('Network error');
+        const data = await resp.json();
+
+        // Auto-fill textarea
+        textarea.value        = data.review;
+        charCount.textContent = data.review.length;
+        textarea.focus();
+      } catch (err) {
+        alert('Could not generate a review. Please try again.');
+      } finally {
+        generateBtn.disabled    = false;
+        genSpinner.style.display = 'none';
+        genIcon.style.display    = 'inline-block';
+      }
+    });
+
+    // ── Predict ─────────────────────────────────────────────────────────────
+
+    const resultCard      = document.getElementById('resultCard');
+    const resultIcon      = document.getElementById('resultIcon');
+    const resultLabel     = document.getElementById('resultLabel');
+    const resultSubtext   = document.getElementById('resultSubtext');
+    const confidenceSection = document.getElementById('confidenceSection');
+    const confidenceBar   = document.getElementById('confidenceBar');
+    const confidenceText  = document.getElementById('confidenceText');
+
+    predictBtn.addEventListener('click', async () => {
+      // Client-side validation before sending
+      const reviewVal   = textarea.value.trim();
+      const categoryVal = document.getElementById('categorySelect').value;
+      const ratingVal   = slider.value;
+
+      if (!reviewVal) {
+        showAlert('Please enter a review text.', 'warning');
+        textarea.focus();
+        return;
+      }
+      if (!categoryVal) {
+        showAlert('Please select a product category.', 'warning');
+        return;
+      }
+
+      // Loading state on button
+      predictBtn.disabled    = true;
+      predictBtn.innerHTML   = '<span class="spinner-border spinner-border-sm me-2"></span>Analysing…';
+
+      try {
+        const resp = await fetch('/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            review:   reviewVal,
+            category: categoryVal,
+            rating:   ratingVal,
+          }),
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          showAlert(data.error || 'Prediction failed. Please try again.', 'danger');
+          return;
+        }
+
+        // Render result
+        renderResult(data);
+
+      } catch (err) {
+        showAlert('Server error. Make sure app.py is running.', 'danger');
+      } finally {
+        predictBtn.disabled  = false;
+        predictBtn.innerHTML = '<i class="bi bi-cpu me-2"></i>Predict';
+      }
+    });
+
+    function renderResult(data) {
+      // Show card
+      resultCard.style.display = 'block';
+      resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      const isFake = data.is_fake;
+
+      // Icon
+      resultIcon.innerHTML = isFake
+        ? '<i class="bi bi-exclamation-triangle-fill text-danger"></i>'
+        : '<i class="bi bi-patch-check-fill text-success"></i>';
+
+      // Label
+      resultLabel.className  = isFake ? 'fw-bold text-danger mb-1' : 'fw-bold text-success mb-1';
+      resultLabel.textContent = data.prediction;
+
+      // Subtext
+      resultSubtext.textContent = isFake
+        ? 'This review appears to be computer-generated (CG) and may not be authentic.'
+        : 'This review appears to be genuine (OR) and written by a real user.';
+
+      // Confidence bar
+      if (data.confidence !== null && data.confidence !== undefined) {
+        confidenceSection.style.display = 'block';
+        const pct = data.confidence;
+        confidenceText.textContent   = pct + '%';
+        confidenceBar.style.width    = pct + '%';
+        confidenceBar.className      = 'progress-bar ' + (isFake ? 'bg-danger' : 'bg-success');
+        confidenceBar.setAttribute('aria-valuenow', pct);
+      } else {
+        confidenceSection.style.display = 'none';
+      }
+    }
+
+    // ── Alert helper ────────────────────────────────────────────────────────
+
+    function showAlert(message, type = 'danger') {
+      // Remove any existing alert
+      const existing = document.getElementById('liveAlert');
+      if (existing) existing.remove();
+
+      const alert = document.createElement('div');
+      alert.id        = 'liveAlert';
+      alert.className = `alert alert-${type} alert-dismissible fade show mt-3`;
+      alert.role      = 'alert';
+      alert.innerHTML = `
+        <i class="bi bi-exclamation-circle me-2"></i>${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      `;
+
+      // Insert after the form card
+      document.querySelector('.main-card').after(alert);
+      setTimeout(() => { if (alert.parentNode) alert.remove(); }, 5000);
+    }
+  </script>
+</body>
+</html>
